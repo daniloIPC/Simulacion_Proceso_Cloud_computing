@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulador HPA · Cola M/G/c(t)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+:root{--bg:#f3f5f7;--panel:#fff;--ink:#14212b;--mute:#5b6b78;--line:#d8dfe5;--acc:#0b7a75;--acc2:#c2410c;--blue:#2563eb}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1a21;--panel:#16252e;--ink:#e6edf1;--mute:#93a5b1;--line:#2a3d49;--acc:#2dd4bf;--acc2:#fb923c;--blue:#60a5fa}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Segoe UI",system-ui,sans-serif}
+main{max-width:1150px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:1.6rem;margin:0 0 4px;letter-spacing:-.01em}
+h2{font-size:1.05rem;margin:0 0 12px}
+.sub{color:var(--mute);margin:0 0 18px}
+html{scroll-behavior:smooth}
+.hero{padding:28px 24px 22px;border-radius:14px;margin-bottom:18px;color:#fff;background:linear-gradient(120deg,#0a4552,#0b7a75 65%,#1b9488)}
+.hero h1{font-size:1.9rem;color:#fff}
+.hero .sub{color:#d3efec;max-width:72ch;margin-bottom:16px}
+.nav{display:flex;flex-wrap:wrap;gap:6px 22px}
+.nav a{color:#fff;text-decoration:none;opacity:.8;padding:2px 0;border-bottom:2px solid transparent}
+.nav a:hover,.nav a:focus-visible{opacity:1;border-bottom-color:#fff;outline:none}
+.ctx{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-bottom:18px}
+.ctx article{background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--acc);border-radius:10px;padding:14px 16px}
+.ctx article:nth-child(2){border-top-color:var(--acc2)}
+.ctx article:nth-child(3){border-top-color:var(--blue)}
+.ctx h3{margin:0 0 6px;font-size:1rem}
+.ctx p{margin:0;color:var(--mute);font-size:.9rem}
+.ctx-t{margin:0 0 10px}
+#sim,#out,#hist,#contexto{scroll-margin-top:14px}
+#msg{align-self:center;color:var(--mute);font-size:.88rem}
+button.on{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc);font-weight:600}
+.panel{box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.card{box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 12px;border-radius:6px}
+button:hover{border-color:var(--acc)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+button.go{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+@media (prefers-color-scheme:dark){button.go{color:#06201e}}
+.form{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+label{display:flex;flex-direction:column;font-size:.82rem;color:var(--mute);gap:3px}
+input,select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);width:100%}
+label.chk{flex-direction:row;align-items:center;gap:8px;color:var(--ink)}
+label.chk input{width:auto}
+#err{color:#b91c1c;font-weight:600;margin-top:10px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:8px;padding:10px 12px}
+.card.w{border-left-color:var(--acc2)}
+.card b{display:block;font-size:1.45rem;line-height:1.2}
+.card span{font-size:.78rem;color:var(--mute)}
+.charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.charts>*{min-width:0}
+.charts .wide{grid-column:1/-1}
+.box{position:relative;height:300px;width:100%;overflow:hidden}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.82rem;white-space:nowrap}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right}
+th:nth-child(2),td:nth-child(2){text-align:left}
+small{color:var(--mute)}
+@media (max-width:800px){.charts{grid-template-columns:minmax(0,1fr)}}
+</style>
+</head>
+<body>
+<main>
+<header class="hero">
+  <h1>Auto-escalado en Kubernetes (HPA) · Cola M/G/c(t)</h1>
+  <p class="sub">Simulación de eventos discretos con llegadas Poisson, servicio Log-Normal/Exponencial y arranque en frío Gamma.</p>
+  <nav class="nav" aria-label="Secciones">
+    <a href="#contexto">Contexto del modelo</a><a href="#sim">Simulador</a><a href="#out">Resultados</a><a href="#hist">Historial</a>
+  </nav>
+</header>
+
+<section id="contexto">
+  <h2 class="ctx-t">Contexto del modelo y propósito de la simulación</h2>
+  <div class="ctx">
+    <article>
+      <h3>1. Qué simula</h3>
+      <p>El auto-escalado dinámico de contenedores en Kubernetes (Horizontal Pod Autoscaler, HPA), mediante Simulación de Eventos Discretos (DES) de un sistema de colas M/G/c(t), donde el número de servidores c(t) cambia en el tiempo según la carga.</p>
+    </article>
+    <article>
+      <h3>2. El problema del Cold Start</h3>
+      <p>Ante un pico repentino de tráfico, los nuevos pods no atienden peticiones hasta terminar de inicializarse. Ese retraso provoca una acumulación temporal en la cola (L<sub>q</sub>) y un aumento en el tiempo de espera (W<sub>q</sub>), con mayor riesgo de violar el SLA.</p>
+    </article>
+    <article>
+      <h3>3. Fundamento estocástico</h3>
+      <p>Las llegadas siguen un proceso de Poisson (tiempos entre llegadas exponenciales); los tiempos de servicio son Log-Normal (o Exponencial); y el arranque en frío sigue una distribución Gamma, definida por su media y desviación estándar.</p>
+    </article>
+  </div>
+</section>
+
+<section class="panel" id="sim">
+  <h2>Escenarios rápidos</h2>
+  <div class="row" id="scen"></div>
+  <h2>Parámetros</h2>
+  <div class="form" id="form"></div>
+  <div class="row" style="margin:14px 0 0">
+    <button class="go" id="run">Ejecutar simulación</button>
+    <span id="msg" aria-live="polite"></span>
+  </div>
+  <div id="err" role="alert"></div>
+</section>
+
+<div id="out" hidden>
+  <div class="cards" id="cards"></div>
+  <div class="charts">
+    <section class="panel wide"><h2>Cola y pods en el tiempo</h2><div class="box"><canvas id="c1"></canvas></div></section>
+    <section class="panel"><h2>Distribución del tiempo de espera W<sub>q</sub></h2><div class="box"><canvas id="c2"></canvas></div></section>
+    <section class="panel"><h2>Peticiones atendidas y utilización por pod</h2><div class="box"><canvas id="c3"></canvas></div></section>
+  </div>
+</div>
+
+<section class="panel" id="hist">
+  <h2>Historial de corridas</h2>
+  <div class="row">
+    <button id="csv">Descargar CSV</button>
+    <button id="clr">Borrar historial</button>
+  </div>
+  <div class="scroll"><table id="tbl"></table></div>
+  <small>L, L<sub>q</sub>: promedios en el tiempo sobre [0, T<sub>sim</sub>]. W, W<sub>q</sub>: promedio por petición. ρ = tiempo ocupado / tiempo disponible de pods activos. Pod-segundos incluye el cold start. Se escala un pod por cada sincronización del HPA.</small>
+</section>
+</main>
+
+<script>
+/* ===================== Configuración de la interfaz ===================== */
+const $ = id => document.getElementById(id);
+// [id, etiqueta, valor por defecto, paso]
+const FIELDS = [
+  ['lambda','λ base (req/s)',4,0.1], ['mu','μ por pod (req/s)',2,0.1], ['cv','CV del servicio (Log-Normal)',0.8,0.1],
+  ['cmin','c mín (pods)',2,1], ['cmax','c máx (pods)',12,1],
+  ['tcs','E[Tcs] cold start (s)',15,1], ['scs','σcs cold start (s)',5,1],
+  ['uup','U up (%)',70,1], ['udown','U down (%)',30,1], ['tsync','T sync (s)',15,1],
+  ['tsim','T sim (s)',600,10], ['sla','Umbral SLA de Wq (s)',2,0.5],
+  ['tpico','t pico (s)',200,10], ['lpico','λ pico (req/s)',14,0.5], ['dpico','Duración pico (s, 0 = hasta el final)',200,10]
+];
+const BASE = {lambda:4,mu:2,cv:0.8,cmin:2,cmax:12,tcs:15,scs:5,uup:70,udown:30,tsync:15,tsim:600,sla:2,tpico:200,lpico:14,dpico:200,pico:false,dist:'logn'};
+const SCEN = {
+  'Base (tráfico moderado)': {},
+  'Pico repentino (Flash Crowd)': {pico:true},
+  'Imágenes optimizadas (cold start bajo)': {pico:true,tcs:3,scs:1},
+  'Escalado agresivo (umbral CPU bajo)': {pico:true,uup:40,udown:15,tsync:10}
+};
+let scenName = 'Personalizado';
+
+// Construye el formulario dinámicamente
+// Parámetros principales visibles; el resto va dentro de <details>
+const fld = id => { const f = FIELDS.find(x => x[0] === id);
+  return `<label>${f[1]}<input id="${f[0]}" type="number" step="${f[3]}"></label>`; };
+$('form').innerHTML =
+  ['lambda','mu','cmin','cmax','tcs','uup'].map(fld).join('') +
+  `<label>Réplicas (N)<input id="reps" type="number" min="1" max="100" step="1" value="30"></label>
+   <details style="grid-column:1/-1"><summary style="cursor:pointer;font-weight:600">Parámetros avanzados y configuración de pico</summary>
+   <div class="form" style="margin-top:10px">` +
+  ['cv','scs','udown','tsync','tsim','sla'].map(fld).join('') +
+  `<label>Distribución de servicio<select id="dist"><option value="logn">Log-Normal</option><option value="exp">Exponencial</option></select></label>
+   <label>Semilla (vacío = aleatoria; N>1 usa 42)<input id="seed" type="number" step="1" placeholder="aleatoria"></label>
+   <label class="chk"><input id="pico" type="checkbox"> Activar pico (Flash Crowd)</label>` +
+  ['tpico','lpico','dpico'].map(fld).join('') + `</div></details>`;
+
+function setParams(o){
+  const v = Object.assign({}, BASE, o);
+  FIELDS.forEach(f => $(f[0]).value = v[f[0]]);
+  $('pico').checked = v.pico; $('dist').value = v.dist;
+}
+Object.keys(SCEN).forEach(name=>{
+  const b = document.createElement('button'); b.textContent = name;
+  b.onclick = () => {                      // solo carga los parámetros; no ejecuta
+    setParams(SCEN[name]); scenName = name;
+    document.querySelectorAll('#scen button').forEach(x => x.classList.toggle('on', x === b));
+    $('err').textContent = '';
+    $('msg').textContent = 'Escenario cargado. Presiona «Ejecutar simulación».';
+  };
+  $('scen').appendChild(b);
+});
+$('form').addEventListener('input', () => {
+  scenName = 'Personalizado'; $('msg').textContent = '';
+  document.querySelectorAll('#scen button').forEach(x => x.classList.remove('on'));
+});
+setParams({});
+
+/* ===================== Utilidades: PRNG y cola de prioridad ===================== */
+// Mulberry32: generador reproducible a partir de una semilla
+function rng(seed){
+  let a = seed >>> 0;
+  return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a;
+    t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+// Heap binario ordenado por tiempo del evento (lista de eventos futuros)
+class Heap{
+  constructor(){ this.a = []; }
+  push(e){ const a=this.a; a.push(e); let i=a.length-1;
+    while(i>0){ const p=(i-1)>>1; if(a[p].t<=a[i].t) break; [a[p],a[i]]=[a[i],a[p]]; i=p; } }
+  pop(){ const a=this.a, top=a[0], last=a.pop();
+    if(a.length){ a[0]=last; let i=0;
+      for(;;){ const l=2*i+1, r=l+1; let m=i;
+        if(l<a.length && a[l].t<a[m].t) m=l;
+        if(r<a.length && a[r].t<a[m].t) m=r;
+        if(m===i) break; [a[m],a[i]]=[a[i],a[m]]; i=m; } }
+    return top; }
+}
+
+/* ===================== Motor de simulación DES ===================== */
+function simulate(p){
+  const R = rng(p.seed), ev = new Heap(), T = p.tsim;
+  const U = () => Math.max(R(), 1e-12);
+  const expo = mean => -mean * Math.log(U());                         // Exponencial con media dada
+  const norm = () => Math.sqrt(-2*Math.log(U())) * Math.cos(2*Math.PI*R()); // Normal(0,1) Box-Muller
+  // Gamma(k,1) por Marsaglia-Tsang (con refuerzo para k<1)
+  function gamma(k){
+    if(k < 1) return gamma(k+1) * Math.pow(U(), 1/k);
+    const d = k-1/3, c = 1/Math.sqrt(9*d);
+    for(;;){ let x, v;
+      do { x = norm(); v = 1 + c*x; } while(v <= 0);
+      v = v*v*v; const u = U();
+      if(u < 1 - 0.0331*x**4 || Math.log(u) < 0.5*x*x + d*(1 - v + Math.log(v))) return d*v; }
+  }
+  // Servicio: media 1/mu. Log-Normal parametrizada por media y CV
+  const sMean = 1/p.mu, s2 = Math.log(1 + p.cv*p.cv), sMu = Math.log(sMean) - s2/2, sSd = Math.sqrt(s2);
+  const service = () => p.dist === 'exp' ? expo(sMean) : Math.exp(sMu + sSd*norm());
+  // Cold start: Gamma con k=(E/σ)^2 y θ=σ^2/E (media = kθ = E, desv. = σ)
+  const k = p.scs > 0 ? (p.tcs/p.scs)**2 : 0, theta = p.scs > 0 ? p.scs**2/p.tcs : 0;
+  const coldStart = () => p.scs > 0 ? gamma(k)*theta : p.tcs;
+  // Tasa de llegada dependiente del tiempo (pico de tráfico opcional)
+  const rate = t => p.pico && t >= p.tpico && (p.dpico <= 0 || t < p.tpico + p.dpico) ? p.lpico : p.lambda;
+  const bounds = p.pico ? [p.tpico, ...(p.dpico > 0 ? [p.tpico + p.dpico] : [])] : [];
+  // Siguiente llegada: por memoria nula de la exponencial se re-muestrea al cruzar un cambio de tasa
+  function nextArrival(t){
+    for(;;){
+      const r = rate(t); let b = Infinity;
+      for(const x of bounds) if(x > t && x < b) b = x;
+      const c = t + expo(1/r);
+      if(c < b) return c;
+      if(b === Infinity) return Infinity;
+      t = b;
+    }
+  }
+
+  // ---- Estado del sistema ----
+  const pods = [], live = [];            // todos los pods / pods vigentes
+  const queue = []; let qh = 0;          // cola FIFO (con índice de cabeza)
+  let nSys = 0, ready = 0, starting = 0, busy = 0, last = 0;
+  let aN = 0, aQ = 0, aB = 0, aR = 0;    // áreas bajo las curvas (integrales en el tiempo)
+  const Wq = [], W = [], ts = {t:[], q:[], act:[], cs:[]};
+  const qlen = () => queue.length - qh;
+  const advance = t => { const dt = t - last;
+    aN += nSys*dt; aQ += qlen()*dt; aB += busy*dt; aR += ready*dt; last = t; };
+
+  function newPod(t, init){
+    const pod = {id: pods.length+1, st: init ? 'ready' : 'cs', busy:false, drain:false,
+                 created:t, readyAt: init ? 0 : null, end:null, busyT:0, served:0, fin:0, req:null};
+    pods.push(pod); live.push(pod);
+    if(init) ready++; else { starting++; ev.push({t: t + coldStart(), type:'R', pod}); }
+  }
+  function removePod(pod, t){
+    pod.end = t; live.splice(live.indexOf(pod), 1);
+    if(pod.st === 'ready') ready--; else if(pod.st === 'cs') starting--;
+  }
+  function startService(pod, req, t){
+    pod.busy = true; busy++; pod.req = req; Wq.push(t - req.a);
+    const s = service(); pod.fin = t + s; pod.busyT += s;
+    ev.push({t: pod.fin, type:'D', pod});
+  }
+  // Asigna peticiones de la cola a pods libres (FIFO)
+  function dispatch(t){
+    while(qlen() > 0){
+      const pod = live.find(x => x.st === 'ready' && !x.busy && !x.drain);
+      if(!pod) break;
+      startService(pod, queue[qh++], t);
+    }
+  }
+
+  for(let i=0; i<p.cmin; i++) newPod(0, true);
+  ev.push({t: nextArrival(0), type:'A'});
+  ev.push({t: p.tsync, type:'S'});
+  ev.push({t: 0, type:'M'});
+  const step = Math.max(1, Math.ceil(T/600));
+  let lastB = 0, lastR = 0;
+
+  while(ev.a.length && ev.a[0].t <= T){
+    const e = ev.pop(), t = e.t; advance(t);
+    if(e.type === 'A'){                                  // Llegada
+      nSys++; queue.push({a:t}); dispatch(t);
+      const n = nextArrival(t); if(n <= T) ev.push({t:n, type:'A'});
+    } else if(e.type === 'D'){                           // Fin de servicio
+      const pod = e.pod; pod.busy = false; busy--; nSys--; pod.served++;
+      W.push(t - pod.req.a); pod.req = null;
+      if(pod.drain) removePod(pod, t); else dispatch(t);
+    } else if(e.type === 'R'){                           // Pod listo (fin de cold start)
+      if(e.pod.st !== 'cs') continue;
+      e.pod.st = 'ready'; e.pod.readyAt = t; starting--; ready++; dispatch(t);
+    } else if(e.type === 'S'){                           // Sincronización del HPA
+      const dR = aR - lastR, util = dR > 0 ? (aB - lastB)/dR : 0;
+      lastB = aB; lastR = aR;
+      const nd = live.filter(x => x.st === 'ready' && !x.drain).length, total = nd + starting;
+      if(util*100 > p.uup && total < p.cmax){
+        newPod(t, false);
+      } else if(util*100 < p.udown && total > p.cmin){
+        const cs = live.filter(x => x.st === 'cs');
+        if(cs.length){ const x = cs[cs.length-1]; removePod(x, t); x.st = 'cancel'; }   // cancela arranque
+        else {
+          const cand = live.filter(x => x.st === 'ready' && !x.drain);
+          const idle = cand.find(x => !x.busy);
+          if(idle) removePod(idle, t); else cand[cand.length-1].drain = true;           // drenaje limpio
+        }
+      }
+      if(t + p.tsync <= T) ev.push({t: t + p.tsync, type:'S'});
+    } else {                                             // Muestreo para la serie temporal
+      ts.t.push(Math.round(t)); ts.q.push(qlen());
+      ts.act.push(ready); ts.cs.push(starting);
+      if(t + step <= T) ev.push({t: t + step, type:'M'});
+    }
+  }
+  advance(T);
+  // Corrige el tiempo ocupado de servicios que siguen en curso al final
+  pods.forEach(x => { if(x.busy) x.busyT -= Math.max(0, x.fin - T); });
+
+  const mean = a => a.length ? a.reduce((s,v)=>s+v,0)/a.length : 0;
+  const podSec = pods.reduce((s,x) => s + ((x.end ?? T) - x.created), 0);
+  return {
+    L: aN/T, Lq: aQ/T, W: mean(W), Wq: mean(Wq), rho: aR > 0 ? aB/aR : 0,
+    sla: Wq.length ? 100*Wq.filter(v => v > p.sla).length/Wq.length : 0,
+    done: W.length, podSec, maxQ: Math.max(0, ...ts.q), maxPods: Math.max(0, ...ts.act),
+    Wqs: Wq, ts,
+    pods: pods.filter(x => x.readyAt !== null).map(x => ({id:x.id, served:x.served,
+      util: 100*x.busyT/Math.max(1e-9, (x.end ?? T) - x.readyAt)}))
+  };
+}
+
+/* ===================== Presentación ===================== */
+Chart.defaults.color = getComputedStyle(document.body).color;
+Chart.defaults.borderColor = 'rgba(128,128,128,.2)';
+const charts = {}, runs = [];
+const mk = (id, cfg) => { if(charts[id]) charts[id].destroy();
+  cfg.options = Object.assign({responsive:true, maintainAspectRatio:false}, cfg.options);
+  charts[id] = new Chart($(id), cfg); };
+const f2 = v => v.toFixed(2);
+
+function readParams(){
+  const p = {};
+  FIELDS.forEach(f => p[f[0]] = parseFloat($(f[0]).value));
+  p.pico = $('pico').checked; p.dist = $('dist').value;
+  p.reps = parseInt($('reps').value);
+  const s = $('seed').value.trim();
+  p.seedGiven = s !== '';
+  p.seed = s === '' ? Math.floor(Math.random()*2147483647) : parseInt(s);
+  let m = '';
+  if(FIELDS.some(f => isNaN(p[f[0]]))) m = 'Completa todos los campos con valores numéricos.';
+  else if(!(p.reps >= 1 && p.reps <= 100)) m = 'Réplicas (N) debe estar entre 1 y 100.';
+  else if(p.lambda <= 0 || p.mu <= 0 || p.tcs <= 0 || p.tsync <= 0 || p.tsim <= 0) m = 'λ, μ, E[Tcs], T sync y T sim deben ser mayores que 0.';
+  else if(p.cmin < 1 || p.cmax < p.cmin) m = 'Se requiere 1 ≤ c mín ≤ c máx.';
+  else if(p.scs < 0 || p.cv < 0) m = 'σcs y CV no pueden ser negativos.';
+  else if(p.udown >= p.uup) m = 'U down debe ser menor que U up.';
+  else if(p.pico && (p.lpico <= 0 || p.tpico < 0)) m = 'Revisa los parámetros del pico.';
+  $('err').textContent = m;
+  return m ? null : p;
+}
+
+// Promedio simple de las N réplicas
+function stat(a){ return {m: a.reduce((s,v) => s+v, 0)/a.length}; }
+function run(){
+  const p = readParams(); if(!p) return;
+  $('msg').textContent = '';
+  // N réplicas con semillas consecutivas (N=1: comportamiento original)
+  const N = p.reps, base = (N > 1 && !p.seedGiven) ? 42 : p.seed;
+  const rs = [];
+  for(let i = 0; i < N; i++) rs.push(simulate(Object.assign({}, p, {seed: base + i})));
+  p.seed = base;
+  const r = rs[0];                                   // réplica representativa para los gráficos
+  const sm = {};
+  ['L','Lq','W','Wq','rho','sla','done','podSec','maxQ','maxPods'].forEach(k => sm[k] = stat(rs.map(x => x[k])));
+  if(N > 1) $('msg').textContent = `Promedio de ${N} réplicas (semillas ${base}…${base+N-1}). Gráficos: réplica 1.`;
+  $('out').hidden = false;
+  const C = [['L','L',2,'','Peticiones en el sistema'],['Lq','Lq',2,'','Peticiones en cola'],
+    ['W','W',2,' s','Tiempo en el sistema'],['Wq','Wq',2,' s','Tiempo de espera en cola'],
+    ['ρ','rho',2,'','Utilización promedio'],['% SLA','sla',2,' %','Peticiones con Wq > '+p.sla+' s'],
+    ['Atendidas','done',0,'','Peticiones completadas'],['Pod-s','podSec',0,'','Pod-segundos consumidos']];
+  $('cards').innerHTML = C.map((c,i) => { const a = sm[c[1]], d = c[2];
+    const ci = '';
+    return `<div class="card${i===5?' w':''}"><b>${i<5?c[0]+' = ':''}${a.m.toFixed(d)}${c[3]}</b><span>${c[4]}${ci}</span></div>`; }).join('');
+
+  // 1) Serie temporal
+  const st = {stepped:true, pointRadius:0, borderWidth:2};
+  mk('c1', {type:'line', data:{labels:r.ts.t, datasets:[
+    {label:'Lq (en cola)', data:r.ts.q, borderColor:'#c2410c', yAxisID:'y', pointRadius:0, borderWidth:2},
+    Object.assign({label:'Pods activos', data:r.ts.act, borderColor:'#0b7a75', yAxisID:'y1'}, st),
+    Object.assign({label:'Pods en cold start', data:r.ts.cs, borderColor:'#2563eb', borderDash:[5,3], yAxisID:'y1'}, st)]},
+    options:{interaction:{mode:'index', intersect:false}, scales:{
+      x:{title:{display:true,text:'Tiempo (s)'}, ticks:{maxTicksLimit:12}},
+      y:{title:{display:true,text:'Peticiones en cola'}, beginAtZero:true},
+      y1:{position:'right', title:{display:true,text:'Pods'}, beginAtZero:true, grid:{drawOnChartArea:false}, ticks:{precision:0}}}}});
+
+  // 2) Histograma de Wq (barra aparte para "sin espera")
+  const w = r.Wqs, none = w.filter(v => v <= 1e-9).length, pos = w.filter(v => v > 1e-9);
+  const mx = Math.max(0.001, ...pos), nb = 15, bw = mx/nb, bins = new Array(nb).fill(0);
+  pos.forEach(v => bins[Math.min(nb-1, Math.floor(v/bw))]++);
+  mk('c2', {type:'bar', data:{labels:['0', ...bins.map((_,i) => ((i+1)*bw).toFixed(1))],
+    datasets:[{label:'Peticiones', data:[none, ...bins], backgroundColor:'#0b7a75'}]},
+    options:{plugins:{legend:{display:false}}, scales:{
+      x:{title:{display:true,text:'Wq (s): límite superior de cada intervalo'}},
+      y:{title:{display:true,text:'Peticiones'}, beginAtZero:true}}}});
+
+  // 3) Por pod
+  mk('c3', {type:'bar', data:{labels:r.pods.map(x => 'Pod '+x.id), datasets:[
+    {label:'Atendidas', data:r.pods.map(x => x.served), backgroundColor:'#2563eb', yAxisID:'y'},
+    {label:'Utilización (%)', data:r.pods.map(x => +x.util.toFixed(1)), type:'line', borderColor:'#c2410c', backgroundColor:'#c2410c', yAxisID:'y1', showLine:false, pointRadius:4}]},
+    options:{scales:{y:{beginAtZero:true, title:{display:true,text:'Peticiones'}},
+      y1:{position:'right', min:0, max:100, grid:{drawOnChartArea:false}, title:{display:true,text:'Utilización (%)'}}}}});
+
+  runs.push({n:runs.length+1, esc:scenName, p, N, sm}); renderTable();
+}
+
+/* ===================== Historial y CSV ===================== */
+// Celda con el promedio de las N réplicas
+const S = (k,d) => x => x.sm[k].m.toFixed(d);
+const COLS = [['#',x=>x.n],['Escenario',x=>x.esc],['N',x=>x.N],['λ',x=>x.p.lambda],['Pico',x=>x.p.pico ? x.p.lpico+'@'+x.p.tpico : '-'],
+  ['μ',x=>x.p.mu],['c mín-máx',x=>x.p.cmin+'-'+x.p.cmax],['Tcs',x=>x.p.tcs+'±'+x.p.scs],
+  ['Uup/Udown',x=>x.p.uup+'/'+x.p.udown],['Tsync',x=>x.p.tsync],['Semilla',x=>x.N > 1 ? x.p.seed+'+i' : x.p.seed],
+  ['L',S('L',2)],['Lq',S('Lq',2)],['W (s)',S('W',2)],['Wq (s)',S('Wq',2)],['ρ',S('rho',2)],
+  ['SLA viol. %',S('sla',2)],['Atendidas',S('done',0)],['Pod-s',S('podSec',0)],
+  ['Cola máx',S('maxQ',0)],['Pods máx',S('maxPods',0)]];
+function renderTable(){
+  $('tbl').innerHTML = runs.length
+    ? '<tr>' + COLS.map(c => `<th>${c[0]}</th>`).join('') + '</tr>' +
+      runs.map(x => '<tr>' + COLS.map(c => `<td>${c[1](x)}</td>`).join('') + '</tr>').join('')
+    : '<tr><td style="text-align:left">Aún no hay corridas. Ejecuta un escenario.</td></tr>';
+}
+$('run').onclick = run;
+$('clr').onclick = () => { runs.length = 0; renderTable(); };
+$('csv').onclick = () => {
+  if(!runs.length) return;
+  const q = v => '"' + String(v).replace(/"/g,'""') + '"';
+  const csv = [COLS.map(c => q(c[0])).join(','), ...runs.map(x => COLS.map(c => q(c[1](x))).join(','))].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], {type:'text/csv;charset=utf-8'}));
+  a.download = 'resultados_hpa.csv'; a.click(); URL.revokeObjectURL(a.href);
+};
+renderTable();
+</script>
+</body>
+</html>
